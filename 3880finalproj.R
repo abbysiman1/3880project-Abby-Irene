@@ -133,7 +133,7 @@ library(gbm)
 
 
 # Random Forest Model
-rf_model <- randomForest(satisfaction01 ~ ., data=training_data, ntree=500, mtry=3, importance=TRUE)
+rf_model <- randomForest(x_train, y_train, ntree=500, mtry=3, importance=TRUE)
 rf_predictions <- predict(rf_model, newdata=testing_data)
 rf_accuracy <- mean(rf_predictions == testing_data$satisfaction01)
 print(paste("Accuracy of Random Forest:", rf_accuracy))
@@ -141,8 +141,18 @@ importance(rf_model)
 varImpPlot(rf_model)
 
 # Boosting Model
-gbm_model <- gbm(satisfaction01 ~ ., data=training_data, distribution="bernoulli", n.trees=1000, interaction.depth=3, shrinkage=0.01, n.minobsinnode = 10, cv.folds=5, verbose = FALSE)
-gbm_predictions <- predict(gbm_model, newdata=testing_data, n.trees=1000, type="response")
-gbm_predictions <- ifelse(gbm_predictions > 0.5, 1, 0)
-gbm_accuracy <- mean(gbm_predictions == testing_data$satisfaction01)
-print(paste("Accuracy of Gradient Boosting Model:", gbm_accuracy))
+gbm_model <- gbm.fit(x_train, as.numeric(y_train) - 1, # as.numeric - 1 for binary 0/1 response
+                     distribution = "bernoulli", 
+                     n.trees = 1000, 
+                     interaction.depth = 3, 
+                     shrinkage = 0.01,
+                     verbose=FALSE
+                    )
+
+# Prediction and evaluation on testing set
+gbm_predictions_prob <- predict(gbm_model, newdata = x_test, n.trees = 1000, type = "response")
+gbm_predictions <- ifelse(gbm_predictions_prob > 0.5, 1, 0)
+
+
+accuracy <- mean(gbm_predictions == y_test)
+print(paste("Accuracy of GBM model:", accuracy))
