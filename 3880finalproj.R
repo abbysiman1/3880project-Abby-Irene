@@ -1,127 +1,148 @@
 source("http://www.uvm.edu/~rsingle/stat3880/data/scripts-3880.R")
-flight_data <- read.csv("satisfaction_2015.csv")
-colnames(flight_data) <- tolower(colnames(data))
+install.packages("glmnet")
+library(glmnet)
 
-colSums(is.na(flight_data))
+
+data <- read.csv("/Users/irenediaz-perez/Desktop/UVM/spring 2024/STAT3880/final project/satisfaction_2015.csv")
+colnames(data) <- tolower(colnames(data))
+
+colSums(is.na(data))
 # 393 missing values in arrival.delay.in.minutes
 
 #dropping incomplete cases
-data <- na.omit(flight_data)
+data <- na.omit(data)
 
-# Assuming satisfaction_score calculation is as before
-flight_data$score <- rowSums(satisfaction_score, na.rm = TRUE)
 
-# Ensure that satisfaction_v2 is a factor with two levels
-flight_data$satisfaction_v2 <- factor(flight_data$satisfaction_v2, levels = c("neutral or dissatisfied", "satisfied"))
+# creating dummy variable for 
+data$satisfaction01 <- as.factor(ifelse(data$satisfaction_v2 == "satisfied", 1, 0))
 
-# Re-create the independent_vars to include all needed variables
-independent_vars <- flight_data[, c("gender", "customer.type", "type.of.travel", "class", "flight.distance", "score")]
-independent_vars$satisfaction_v2 <- flight_data$satisfaction_v2  # Adding the response variable to the predictors' data frame
+# creating a continuous variable using factors that are not on the flight to predict satisfaction based off on flight experience
+columns_to_sum <- c("departure.arrival.time.convenient", "ease.of.online.booking",
+                    "gate.location", "online.boarding", "baggage.handling",
+                    "departure.delay.in.minutes", "arrival.delay.in.minutes")
 
-# Sample data partitioning with a seed for reproducibility
-train_indices <- sample(seq_len(nrow(independent_vars)), size = floor(0.5 * nrow(independent_vars)))
+# Create a new column called "score" containing the row sums
+continuous.data <- data
+continuous.data$score <- rowSums(data[columns_to_sum], na.rm = TRUE)
+continuous.data <- continuous.data[, !(names(continuous.data) %in% columns_to_sum)]
 
-# Split data into train and test
-train_data <- independent_vars[train_indices, ]
-test_data <- independent_vars[-train_indices, ]
 
-# Fit the Logistic Regression Model
-fit.glm <- glm(satisfaction_v2 ~ ., data = train_data, family = binomial())
+# Print the updated data frame
+#print(data)
+# Departure/Arrival time convenient Ease of Online booking Gate location Online boarding Baggage handling Departure Delay in Minutes Arrival Delay in Minutes
 
-# Check the model summary
-summary(fit.glm)
+#logistic regression using all variables 
+log.reg.mod <- glm(satisfaction01~.,family=binomial,dat=data)
 
-# Optionally, predict and evaluate the model's performance on test data
-probabilities <- predict(fit.glm, newdata = test_data, type = "response")
-predicted_classes <- ifelse(probabilities > 0.5, "satisfied", "neutral or dissatisfied")
+#summarizing the findings
+summary(log.reg.mod)
 
-# Create a confusion matrix
-conf_matrix <- table(Predicted = predicted_classes, Actual = test_data$satisfaction_v2)
-conf_matrix
+# create training and test data
+set.seed(1)
+train <- sample(1:nrow(data), 0.8 * nrow(data))
+training_data <- data[train, ]
+testing_data <- data[-train, ]
 
-# Calculate error rate
-error_rate <- mean(predicted_classes != test_data$satisfaction_v2)
-error_rate
+# defining predictor and response variables
+x_train <- training_data[, 8:24]
+x_train <- as.data.frame(sapply(x_train, as.numeric))
+y_train <- training_data$satisfaction01
 
-# Load necessary library
-library(rpart)
+x_train <- as.matrix(training_data[, 8:24])
+x_test <- as.matrix(testing_data[, 8:24])
 
-# Fit a Decision Tree model
-tree_model <- rpart(satisfaction_v2 ~ ., data = train_data, method = "class")
+x_test <- testing_data[, 8:24]
+x_test <- as.data.frame(sapply(x_test, as.numeric))
 
-# Print the tree structure
-print(tree_model)
+lasso_model <- cv.glmnet(x_train, y_train, family = "binomial", alpha = 1)
 
-# Plot the tree
-plot(tree_model, main = "Decision Tree for Flight Satisfaction")
-text(tree_model, use.n = TRUE)
+# Print the optimal value of lambda
+print(lasso_model$lambda.min)
 
-# Predict using the tree model on test data
-tree_predictions <- predict(tree_model, newdata = test_data, type = "class")
+# Extract coefficients of the selected variables
+selected_coefficients <- coef(lasso_model, s = "lambda.min")
 
-# Create a confusion matrix
-conf_matrix_tree <- table(Predicted = tree_predictions, Actual = test_data$satisfaction_v2)
-conf_matrix_tree
+# Print the coefficients
+print(selected_coefficients)
 
-# Calculate error rate
-error_rate_tree <- mean(tree_predictions != test_data$satisfaction_v2)
-error_rate_tree
+# Make predictions on new data
+# Assuming 'X_test' is your matrix of predictor variables for the testing set
+predictions <- predict(lasso_model, newx = x_test, s = "lambda.min", type = "response")
 
-# Load the necessary library
+predictions
+
+
+# create models from this and compute the accuracy
+
+# Evaluate model performance
+#use appropriate metrics such as accuracy, AUC, etc.
+
+# Higher magnitude means more of an impact
+
+# which variables are correlated with each other
+
+
+
+# area under the roc
+# mcfaddens 
+# training
+
+
+
+
+
+# do this after predicting
+# comparing findings to that of null model
+nullmod = glm(satisfaction01 ~ 1, family=binomial, dat=data)
+logLik(nullmod)
+logLik(log.red.mod)
+1-logLik(log.reg.mod)/logLik(nullmod)              
+as.numeric( 1-logLik(log.reg.mod)/logLik(nullmod) )
+
+
+# Exhaustive searches 
+# Forward / backwards selection
+#psuedo r squared mcfaddens
+
+# multiple linear regression
+lm_model <- lm(score ~ flight.distance + inflight.wifi.service + food.and.drink + seat.comfort + 
+                 inflight.entertainment + on.board.service + leg.room.service + checkin.service + inflight.service + cleanliness, data = continuous.data)
+summary(lm_model)
+# low p-values: wifi, food and drink, seat comfort, enterainment, leg room, in flight service, cleanliness
+
+# look at correlation matrix 
+
+# Define the subset of predictor variables with adjusted column names
+selected_predictors <- continuous.data[, c("flight.distance", "inflight.wifi.service", "food.and.drink", 
+                                       "seat.comfort", "inflight.entertainment", "on.board.service", 
+                                       "leg.room.service", "checkin.service", "inflight.service", 
+                                       "cleanliness")]
+
+# Compute the correlation matrix
+correlation_matrix <- cor(selected_predictors)
+
+# Print the correlation matrix
+print(correlation_matrix)
+
+# cleanliness correlated with food and drink, seat comfort, inflight entertainment
+# food and drink correlated with seat comfort and in flight entertainment
+
+
 library(randomForest)
-
-# Fit a Random Forest model
-forest_model <- randomForest(satisfaction_v2 ~ ., data = train_data, ntree = 500, importance = TRUE)
-
-# Summary of the random forest model
-print(forest_model)
-
-# Predict using the Random Forest model on test data
-forest_predictions <- predict(forest_model, newdata = test_data)
-
-# Create a confusion matrix
-conf_matrix_forest <- table(Predicted = forest_predictions, Actual = test_data$satisfaction_v2)
-conf_matrix_forest
-
-# Calculate error rate
-error_rate_forest <- mean(forest_predictions != test_data$satisfaction_v2)
-error_rate_forest
-
-# Optional: Plot variable importance
-varImpPlot(forest_model)
-
-# Load necessary library
 library(gbm)
 
-# Assuming independent_vars already includes satisfaction_v2 and has been preprocessed as discussed
-set.seed(123)
-train_indices <- sample(seq_len(nrow(independent_vars)), size = floor(0.5 * nrow(independent_vars)))
-train_data <- independent_vars[train_indices, ]
-test_data <- independent_vars[-train_indices, ]
 
-# Fit a Gradient Boosting model
-gbm_model <- gbm(satisfaction_v2 ~ ., data = train_data, 
-                 distribution = "bernoulli", # Since it's a binary classification problem
-                 n.trees = 500,             # Number of boosting iterations
-                 interaction.depth = 3,     # Depth of each tree
-                 shrinkage = 0.01,          # Learning rate
-                 cv.folds = 5,              # 5-fold cross-validation
-                 n.minobsinnode = 10        # Minimum number of observations in the nodes
-)
+# Random Forest Model
+rf_model <- randomForest(satisfaction01 ~ ., data=training_data, ntree=500, mtry=3, importance=TRUE)
+rf_predictions <- predict(rf_model, newdata=testing_data)
+rf_accuracy <- mean(rf_predictions == testing_data$satisfaction01)
+print(paste("Accuracy of Random Forest:", rf_accuracy))
+importance(rf_model)
+varImpPlot(rf_model)
 
-# Summary of the gradient boosting model
-summary(gbm_model)
-
-# Making predictions on the test set
-gbm_predictions <- predict(gbm_model, newdata = test_data, n.trees = 500, type = "response")
-gbm_pred_class <- ifelse(gbm_predictions > 0.5, "satisfied", "neutral or dissatisfied")
-
-# Create a confusion matrix
-conf_matrix_gbm <- table(Predicted = gbm_pred_class, Actual = test_data$satisfaction_v2)
-conf_matrix_gbm
-
-# Calculate error rate
-error_rate_gbm <- mean(gbm_pred_class != test_data$satisfaction_v2)
-error_rate_gbm
-
-
+# Boosting Model
+gbm_model <- gbm(satisfaction01 ~ ., data=training_data, distribution="bernoulli", n.trees=1000, interaction.depth=3, shrinkage=0.01, n.minobsinnode = 10, cv.folds=5, verbose = FALSE)
+gbm_predictions <- predict(gbm_model, newdata=testing_data, n.trees=1000, type="response")
+gbm_predictions <- ifelse(gbm_predictions > 0.5, 1, 0)
+gbm_accuracy <- mean(gbm_predictions == testing_data$satisfaction01)
+print(paste("Accuracy of Gradient Boosting Model:", gbm_accuracy))
